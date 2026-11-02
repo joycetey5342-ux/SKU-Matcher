@@ -1,0 +1,590 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<title>Booklist SKU Matcher</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Bricolage+Grotesque:opsz,wght@12..96,600;12..96,700&family=IBM+Plex+Sans:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<style>
+/* Layout: a bookshop counter tool — two setup cards (catalogue, booklist) above one wide working table; summary first, rows after. */
+:root{
+  --bg:#f3f5f8; --surface:#ffffff; --sunk:#e9edf3; --line:#d5dbe4;
+  --ink:#172033; --muted:#5b6578; --accent:#1f4fd1; --accent-ink:#ffffff;
+  --mark:#ffe27a; --good:#1c7c4a; --good-bg:#dcf2e5; --warn:#94600a; --warn-bg:#fdf0cf;
+  --bad:#b3261e; --bad-bg:#fbe1de; --info:#3c4fa8; --info-bg:#e3e8fb;
+  --f-display:"Bricolage Grotesque", "Segoe UI", system-ui, sans-serif;
+  --f-body:"IBM Plex Sans", "Segoe UI", system-ui, sans-serif;
+  --f-mono:"IBM Plex Mono", ui-monospace, Menlo, Consolas, monospace;
+  --r:10px; color-scheme:light;
+}
+@media (prefers-color-scheme: dark){:root{
+  --bg:#10141c; --surface:#171d28; --sunk:#1e2533; --line:#2c3546;
+  --ink:#e6eaf2; --muted:#9aa4b8; --accent:#7f9ff5; --accent-ink:#0d1220;
+  --mark:#6b5a12; --good:#6fd39b; --good-bg:#16352a; --warn:#f0c26a; --warn-bg:#3a2e12;
+  --bad:#f39a92; --bad-bg:#3d1c1a; --info:#a9b7f5; --info-bg:#232c4d; color-scheme:dark}}
+*{box-sizing:border-box}
+html{-webkit-text-size-adjust:100%}
+body{margin:0;background:var(--bg);color:var(--ink);font:15px/1.5 var(--f-body);
+  padding-left:max(16px,env(safe-area-inset-left,0px));padding-right:max(16px,env(safe-area-inset-right,0px));
+  padding-top:calc(20px + env(safe-area-inset-top,0px));padding-bottom:calc(48px + env(safe-area-inset-bottom,0px))}
+[hidden]{display:none!important}
+.wrap{max-width:1180px;margin:0 auto;display:grid;gap:20px}
+header{display:flex;flex-wrap:wrap;align-items:end;justify-content:space-between;gap:12px}
+h1{font:700 clamp(26px,4vw,36px)/1.05 var(--f-display);margin:0;letter-spacing:-.01em;text-wrap:balance}
+h1 .hl{background:linear-gradient(transparent 58%,var(--mark) 58%);padding:0 2px}
+.sub{color:var(--muted);margin:6px 0 0;max-width:62ch}
+h2{font:600 18px/1.2 var(--f-display);margin:0}
+.eyebrow{font:500 11px/1 var(--f-mono);letter-spacing:.08em;text-transform:uppercase;color:var(--muted)}
+.setup{display:grid;grid-template-columns:repeat(auto-fit,minmax(300px,1fr));gap:16px}
+.card{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);padding:18px;display:grid;gap:12px;align-content:start;min-width:0}
+.row{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.stat{font:500 13px/1.4 var(--f-mono);color:var(--muted)}
+.stat b{color:var(--ink);font-weight:500}
+button{font:500 14px/1 var(--f-body);border-radius:8px;border:1px solid var(--line);background:var(--surface);color:var(--ink);padding:9px 14px;cursor:pointer}
+button:hover{border-color:var(--accent)}
+button.primary{background:var(--accent);color:var(--accent-ink);border-color:var(--accent)}
+button:disabled{opacity:.5;cursor:not-allowed}
+button:focus-visible,select:focus-visible,input:focus-visible,.drop:focus-visible,a:focus-visible{outline:2px solid var(--accent);outline-offset:2px}
+.drop{border:1.5px dashed var(--line);border-radius:var(--r);padding:18px;text-align:center;background:var(--sunk);cursor:pointer;color:var(--muted)}
+.drop.over{border-color:var(--accent);color:var(--ink)}
+.drop strong{color:var(--ink);display:block;font-weight:600}
+select,input[type=text],input[type=password]{font:inherit;color:var(--ink);background:var(--surface);border:1px solid var(--line);border-radius:6px;padding:6px 8px;min-width:0}
+label.f{display:grid;gap:4px;font-size:12px;color:var(--muted);flex:1 1 140px}
+.note{font-size:13px;color:var(--muted)}
+.msg{font-size:13px;padding:8px 10px;border-radius:6px;background:var(--info-bg);color:var(--info)}
+.msg.err{background:var(--bad-bg);color:var(--bad)}
+.summary{display:flex;flex-wrap:wrap;gap:8px;align-items:center}
+.chip{font:500 12px/1 var(--f-mono);padding:6px 9px;border-radius:999px;background:var(--sunk);color:var(--muted)}
+.results{background:var(--surface);border:1px solid var(--line);border-radius:var(--r);overflow:hidden}
+.results-head{display:flex;flex-wrap:wrap;gap:12px;justify-content:space-between;align-items:center;padding:16px 18px;border-bottom:1px solid var(--line)}
+.tablebox{overflow-x:auto}
+table{border-collapse:collapse;width:100%;min-width:860px;font-size:14px}
+th{font:500 11px/1 var(--f-mono);letter-spacing:.06em;text-transform:uppercase;color:var(--muted);text-align:left;padding:10px 12px;background:var(--sunk);white-space:nowrap}
+td{padding:10px 12px;border-top:1px solid var(--line);vertical-align:top}
+td.n{font:500 13px var(--f-mono);color:var(--muted);font-variant-numeric:tabular-nums;width:40px}
+.t{font-weight:500}
+.pub{font-size:12px;color:var(--muted)}
+.sku{font:500 14px var(--f-mono);font-variant-numeric:tabular-nums;width:100%;max-width:170px;letter-spacing:.02em}
+.matched{font-size:12px;color:var(--muted);max-width:340px}
+.matched a{color:var(--accent)}
+.matched select{font-size:12px;max-width:100%;margin-top:4px;display:block}
+.pill{display:inline-block;font:500 11px/1 var(--f-mono);padding:5px 8px;border-radius:999px;white-space:nowrap}
+.p-saved{background:var(--good-bg);color:var(--good)}
+.p-cat{background:var(--good-bg);color:var(--good)}
+.p-check{background:var(--warn-bg);color:var(--warn)}
+.p-web{background:var(--info-bg);color:var(--info)}
+.p-pending{background:var(--sunk);color:var(--muted)}
+.p-none{background:var(--bad-bg);color:var(--bad)}
+.act{white-space:nowrap}
+.act button{padding:6px 10px;font-size:12px}
+tr.flag td:first-child{box-shadow:inset 3px 0 0 var(--warn)}
+tr.miss td:first-child{box-shadow:inset 3px 0 0 var(--bad)}
+.empty{padding:36px 18px;text-align:center;color:var(--muted)}
+.lookup{display:flex;flex-wrap:wrap;gap:10px;justify-content:space-between;align-items:center;padding:16px 18px;border-top:1px solid var(--line);background:var(--sunk)}
+.spin{display:inline-block;width:12px;height:12px;border:2px solid currentColor;border-right-color:transparent;border-radius:50%;animation:s .8s linear infinite;vertical-align:-2px;margin-right:6px}
+@keyframes s{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){.spin{animation:none}}
+.legend{display:flex;flex-wrap:wrap;gap:10px;font-size:12px;color:var(--muted)}
+.gate{max-width:420px;margin:10vh auto 0}
+.picklist{display:grid;gap:6px;max-height:60vh;overflow-y:auto;padding-right:4px}
+.pickrow{display:grid;grid-template-columns:auto 2.5em minmax(0,1fr) auto;gap:10px;align-items:center;padding:8px 10px;border:1px solid var(--line);border-radius:8px;background:var(--surface);cursor:pointer}
+.pickrow.on{border-color:var(--accent);background:var(--info-bg)}
+.pickrow.on .ptitle{background:var(--surface)}
+.pickrow.faint{opacity:.7}
+.pickrow input[type=checkbox]{width:20px;height:20px;accent-color:var(--accent)}
+.pno{font:500 13px var(--f-mono);color:var(--muted);text-align:right}
+input.ptitle{width:100%;border-color:transparent;background:transparent}
+input.ptitle:hover,input.ptitle:focus{border-color:var(--line)}
+.pmeta{font:12px var(--f-mono);color:var(--muted);white-space:nowrap}
+@media (max-width:560px){.pickrow{grid-template-columns:auto 2em minmax(0,1fr)}.pmeta{grid-column:3}}
+textarea.titlein{display:block;width:100%;min-width:260px;font:500 14px/1.4 var(--f-body);color:var(--ink);border:1px solid transparent;border-radius:6px;background:transparent;padding:4px 6px;margin-left:-6px;resize:none;field-sizing:content}
+textarea.titlein:hover,textarea.titlein:focus{border-color:var(--line);background:var(--surface)}
+.btnlink{display:inline-block;font:500 12px/1 var(--f-body);padding:7px 10px;border:1px solid var(--line);border-radius:8px;color:var(--accent);text-decoration:none;margin-right:6px}
+.btnlink:hover{border-color:var(--accent)}
+</style>
+</head>
+<body>
+
+<div class="card gate" id="gate" hidden>
+  <div class="eyebrow">Staff only</div>
+  <h2>Enter the shop passcode</h2>
+  <form id="gateForm" class="row">
+    <input type="password" id="pass" autocomplete="current-password" aria-label="Passcode" style="flex:1 1 180px">
+    <button class="primary" type="submit">Open</button>
+  </form>
+  <div class="msg err" id="gateMsg" hidden></div>
+</div>
+
+<div class="wrap" id="app">
+  <header>
+    <div>
+      <h1>Booklist <span class="hl">SKU</span> Matcher</h1>
+      <p class="sub">Drop in a school booklist, tap the ticked titles, and get their SKUs from your catalogue and from SKUs your team has already saved. Anything new is one tap away on Popular.</p>
+    </div>
+  </header>
+
+  <section class="setup">
+    <div class="card">
+      <div class="eyebrow">Step 1 · Your catalogue (optional)</div>
+      <h2>Master SKU list</h2>
+      <div class="stat" id="catStat">Loading…</div>
+      <div class="drop" id="catDrop" tabindex="0" role="button" aria-label="Upload catalogue spreadsheet">
+        <strong>Upload Excel or CSV</strong>Your inventory export with a SKU/ISBN column and a title column
+      </div>
+      <input type="file" id="catFile" accept=".xlsx,.xls,.csv" hidden>
+      <div id="catMap" hidden>
+        <div class="row">
+          <label class="f">SKU / ISBN column<select id="colSku"></select></label>
+          <label class="f">Title column<select id="colTitle"></select></label>
+          <label class="f">Publisher column<select id="colPub"></select></label>
+        </div>
+        <div class="row" style="margin-top:10px"><button class="primary" id="catSave">Save catalogue</button><span class="note" id="catPreview"></span></div>
+      </div>
+      <div class="msg" id="catMsg" hidden></div>
+    </div>
+
+    <div class="card">
+      <div class="eyebrow">Step 2 · The booklist</div>
+      <h2>School booklist</h2>
+      <div class="drop" id="blDrop" tabindex="0" role="button" aria-label="Upload booklist">
+        <strong>Upload or take a photo</strong>Excel, CSV, PDF, photo or screenshot
+      </div>
+      <input type="file" id="blFile" accept=".xlsx,.xls,.csv,.pdf,image/*" hidden>
+      <label class="row note" for="optChi"><input type="checkbox" id="optChi"> Photo has Chinese text (slower the first time)</label>
+      <div class="msg" id="blMsg" hidden></div>
+      <p class="note">Excel, CSV and most school PDFs are read exactly. Photos are read on this device; a clear, straight-on photo works best.</p>
+    </div>
+  </section>
+
+  <section class="card" id="pick" hidden>
+    <div class="row" style="justify-content:space-between">
+      <div style="display:grid;gap:4px">
+        <div class="eyebrow">Step 2b · Tap the ticked items</div>
+        <h2 id="pickTitle">Rows found</h2>
+      </div>
+      <div class="row">
+        <button id="pickAll">Select all</button>
+        <button id="pickNone">Clear</button>
+        <button class="primary" id="pickGo">Match selected</button>
+      </div>
+    </div>
+    <p class="note" id="pickNote"></p>
+    <div class="picklist" id="pickList"></div>
+    <label class="row note" for="showAll"><input type="checkbox" id="showAll"> Show lines that don't look like books</label>
+  </section>
+
+  <section class="results">
+    <div class="results-head">
+      <div style="display:grid;gap:4px;min-width:0">
+        <div class="eyebrow">Step 3 · Matches</div>
+        <h2 id="runTitle">No booklist yet</h2>
+      </div>
+      <div class="row">
+        <button id="copyBtn" disabled>Copy table</button>
+        <button id="dlBtn" class="primary" disabled>Download Excel</button>
+      </div>
+    </div>
+    <div style="padding:12px 18px;border-bottom:1px solid var(--line);display:grid;gap:8px">
+      <div class="summary" id="summary"></div>
+      <div class="legend">
+        <span><span class="pill p-saved">Saved</span> confirmed before</span>
+        <span><span class="pill p-cat">Catalogue</span> strong match</span>
+        <span><span class="pill p-check">Check</span> likely, please confirm</span>
+        <span><span class="pill p-none">No match</span> search Popular, paste the ISBN, Remember</span>
+      </div>
+    </div>
+    <div class="tablebox">
+      <table>
+        <thead><tr><th>#</th><th>Booklist title</th><th>SKU</th><th>Status</th><th>Matched to</th><th></th></tr></thead>
+        <tbody id="tbody"></tbody>
+      </table>
+      <div class="empty" id="emptyState">Upload a booklist in step 2 and the ticked titles will appear here with their SKUs.</div>
+    </div>
+  </section>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/tesseract.js@5.1.1/dist/tesseract.min.js"></script>
+<script>
+(() => {
+const $ = id => document.getElementById(id);
+const esc = s => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const ls = { get(k){ try { return localStorage.getItem(k); } catch { return null; } }, set(k,v){ try { localStorage.setItem(k,v); } catch {} } };
+
+let catalog = [], known = {}, run = null, pendingCat = null, cands = [], candMeta = {};
+
+/* ---------- API ---------- */
+class AuthError extends Error {}
+async function api(path, opts = {}) {
+  const r = await fetch(path, { ...opts, headers: { "content-type": "application/json", "x-passcode": ls.get("passcode") || "", ...(opts.headers||{}) } });
+  if (r.status === 401) { showGate(); throw new AuthError("passcode"); }
+  const data = await r.json().catch(() => ({}));
+  if (!r.ok) throw new Error(data.error || "Something went wrong (" + r.status + ").");
+  return data;
+}
+function showGate(msg){ $("app").hidden = true; $("gate").hidden = false; $("gateMsg").hidden = !msg; $("gateMsg").textContent = msg || ""; $("pass").focus(); }
+$("gateForm").onsubmit = async e => {
+  e.preventDefault(); ls.set("passcode", $("pass").value.trim());
+  try { await boot(); $("gate").hidden = true; $("app").hidden = false; }
+  catch (err) { if (err instanceof AuthError) showGate("That passcode didn't work."); }
+};
+
+/* ---------- normalising & matching ---------- */
+const STOP = new Set(["for","the","and","of","a","an","to","with","new","pte","ltd","edition","ed","rev","revised","student","students","pupil","pupils","s"]);
+function norm(s){
+  let t = String(s||"").toLowerCase();
+  t = t.replace(/practise/g,"practice").replace(/\bpri\b\.?/g,"primary").replace(/\bschs?\b|\bschools\b/g,"school")
+       .replace(/\bthird\b/g,"3e").replace(/\bsecond\b|\b2nd\b/g,"2e").replace(/\bfirst edition\b/g,"1e")
+       .replace(/\(\s*(\d)\s*e\s*\)/g," $1e ").replace(/\b(\d)(?:rd|th|nd|st)\s*(?:ed|edition)\b/g," $1e ")
+       .replace(/\bbks?\b|\bbooklets?\b/g,"book")
+       .replace(/\bbook\s*(\d+)\s*(?:-|–|to)\s*(?:book\s*)?(\d+)/g," bk$1to$2 ")
+       .replace(/\bp\s*(\d)\s*([ab])\b/g," $1$2 ").replace(/\bprimary\s*(\d)\s*([ab])\b/g," $1$2 ")
+       .replace(/\bprimary\s*(\d)\b/g," $1 ").replace(/\bp(\d)\b/g," $1 ")
+       .replace(/\bclps\b/g," chinese language primary school ").replace(/\bhcps\b/g," higher chinese primary school ")
+       .replace(/\bmlps\b/g," malay language primary school ").replace(/\btlps\b/g," tamil language primary school ")
+       .replace(/\bcce\b/g," character citizenship education ").replace(/\bftgp\b/g," form teacher guidance period ")
+       .replace(/\b(\d)\s+([ab])\b/g,"$1$2")
+       .replace(/[^a-z0-9㐀-鿿஀-௿]+/g," ");
+  return t.trim().split(/\s+/).filter(w => w && !STOP.has(w));
+}
+const LANG = {cl:"zh",chinese:"zh",ml:"ms",malay:"ms",tl:"ta",tamil:"ta",el:"en",english:"en"};
+function feats(title){
+  const tok = norm(title);
+  const levels = tok.filter(w => /^\d[ab]?$/.test(w));
+  const langs = [...new Set(tok.map(w => LANG[w]).filter(Boolean))];
+  const ranges = tok.filter(w => /^bk\d+to\d+$/.test(w));
+  const joined = tok.join(" ");
+  const tri = new Set(); const s = " "+joined+" ";
+  for (let i=0;i<s.length-2;i++) tri.add(s.slice(i,i+3));
+  return {tok:new Set(tok), levels, langs, ranges, passport: tok.includes("passport"), tri, key: tok.join(" ")};
+}
+function dice(a,b){ if(!a.size||!b.size) return 0; let n=0; for(const x of a) if(b.has(x)) n++; return 2*n/(a.size+b.size); }
+function score(q, c){
+  let s = 0.6*dice(q.tok,c.tok) + 0.4*dice(q.tri,c.tri);
+  const lvQ = q.levels.find(x=>/[ab]$/.test(x)) || q.levels[0], lvC = c.levels.find(x=>/[ab]$/.test(x)) || c.levels[0];
+  if (lvQ && lvC && lvQ !== lvC) s *= 0.35;
+  if (q.langs.length && c.langs.length && !q.langs.some(l=>c.langs.includes(l))) s *= 0.35;
+  if (q.ranges.length && c.ranges.length && q.ranges[0] !== c.ranges[0]) s *= 0.4;
+  if (q.passport !== c.passport && (q.ranges.length || c.ranges.length)) s *= 0.8;
+  return s;
+}
+function keyOf(title){ const k = feats(title).key || String(title).toLowerCase(); let h=0; for (const ch of k) h = (h*31 + ch.codePointAt(0))>>>0; return "k"+h.toString(36)+"-"+k.length; }
+
+function matchItem(it){
+  it.key = keyOf(it.title);
+  if (it.manual) return it;
+  const kn = known[it.key];
+  if (kn) return Object.assign(it, {sku:kn.sku, src:"saved", matchTitle:kn.matched||"", score:1, alts:[]});
+  const q = feats(it.title);
+  const ranked = catalog.map(c => ({c, s:score(q,c.f)})).filter(x => x.s > .3).sort((a,b)=>b.s-a.s).slice(0,4);
+  it.alts = ranked.map(x => ({sku:x.c.sku, title:x.c.title, s:x.s}));
+  const best = ranked[0];
+  if (best && best.s >= .55) return Object.assign(it,{sku:best.c.sku, src: best.s >= .8 && (!ranked[1] || best.s - ranked[1].s > .08) ? "cat" : "check", matchTitle:best.c.title, score:best.s});
+  return Object.assign(it,{sku:"", src:"none", matchTitle:"", score:0});
+}
+function rematchAll(){ if (!run) return; run.items.forEach(matchItem); render(); }
+
+function validIsbn13(s){ const d = String(s||"").replace(/\D/g,""); if (d.length!==13) return false; let t=0; for (let i=0;i<12;i++) t += +d[i]*(i%2?3:1); return (10-t%10)%10 === +d[12]; }
+const popularUrl = it => "https://popular.com.sg/search?type=product&q=" + encodeURIComponent(cleanQuery(it.title));
+const googleUrl = it => "https://www.google.com/search?q=" + encodeURIComponent(cleanQuery(it.title) + (it.publisher ? " " + it.publisher : "") + " ISBN Singapore");
+const cleanQuery = t => String(t).replace(/[()&]/g," ").replace(/\s+/g," ").trim();
+
+/* ---------- rendering results ---------- */
+const PILL = {saved:["p-saved","Saved"],cat:["p-cat","Catalogue"],check:["p-check","Check"],none:["p-none","No match"],manual:["p-saved","Entered"]};
+const statusLabel = it => (PILL[it.manual?"manual":it.src]||PILL.none)[1];
+function render(){
+  const tb = $("tbody"); tb.innerHTML = "";
+  const has = run && run.items.length;
+  $("emptyState").hidden = !!has; $("copyBtn").disabled = $("dlBtn").disabled = !has;
+  $("runTitle").textContent = has ? (run.fileName || "Booklist") : "No booklist yet";
+  if (!has) { $("summary").innerHTML = ""; return; }
+  let checks = 0;
+  run.items.forEach((it,i) => {
+    const src = it.manual ? "manual" : it.src; if (src==="check") checks++;
+    const [cls,label] = PILL[src] || PILL.none;
+    const tr = document.createElement("tr");
+    if (src==="check") tr.className="flag"; if (src==="none") tr.className="miss";
+    const showAlts = (it.alts||[]).length && (src==="check" || src==="none" || it.alts.length > 1);
+    const alts = showAlts ? `<select data-i="${i}" class="alt" aria-label="Other catalogue matches"><option value="">${src==="none"?"Closest in catalogue…":"Other matches…"}</option>${it.alts.map((a,j)=>`<option value="${j}">${esc(a.sku)} · ${esc(a.title)} (${Math.round(a.s*100)}%)</option>`).join("")}</select>` : "";
+    const bad = it.manual && /^\d{13}$/.test(it.sku) && !validIsbn13(it.sku) ? `<div class="pub" style="color:var(--bad)">Check digits look wrong</div>` : "";
+    const search = !it.sku || src==="check" ? `<a class="btnlink" href="${esc(popularUrl(it))}" target="_blank" rel="noopener">Popular</a><a class="btnlink" href="${esc(googleUrl(it))}" target="_blank" rel="noopener" title="Searches all websites, including school booklists that list ISBNs">Google</a>` : "";
+    tr.innerHTML = `<td class="n">${esc(it.no || i+1)}</td>
+      <td style="width:40%"><textarea class="titlein" data-i="${i}" id="t-${i}" rows="${it.title.length > 48 ? 2 : 1}" aria-label="Title">${esc(it.title)}</textarea><div class="pub">${esc([it.publisher, it.price].filter(Boolean).join(" · "))}</div></td>
+      <td><input type="text" class="sku" id="sku-${i}" data-i="${i}" value="${esc(it.sku)}" placeholder="paste ISBN" inputmode="numeric" aria-label="SKU for ${esc(it.title)}">${bad}</td>
+      <td><span class="pill ${cls}">${label}${src==="check"||src==="cat" ? " "+Math.round(it.score*100)+"%" : ""}</span></td>
+      <td class="matched">${esc(it.matchTitle)}${alts}</td>
+      <td class="act">${search}${it.sku && src!=="saved" ? `<button data-save="${i}" title="Use this SKU automatically next time">Remember</button>` : ""}</td>`;
+    tb.appendChild(tr);
+  });
+  const total = run.items.length, ok = run.items.filter(x=>x.sku).length;
+  $("summary").innerHTML = `<span class="chip">${total} item${total===1?"":"s"}</span><span class="chip">${ok} with SKU</span>` +
+    (checks ? `<span class="chip">${checks} to check</span>` : "") + (total-ok ? `<span class="chip">${total-ok} to search</span>` : "");
+}
+function saveRunLocal(){ if (run) ls.set("run", JSON.stringify(run)); }
+
+$("tbody").addEventListener("change", e => {
+  const i = +e.target.dataset.i; if (!run || isNaN(i)) return;
+  const it = run.items[i];
+  if (e.target.classList.contains("alt") && e.target.value !== "") {
+    const a = it.alts[+e.target.value]; Object.assign(it,{sku:a.sku, matchTitle:a.title, score:a.s, src:"check", manual:false});
+  } else if (e.target.classList.contains("sku")) {
+    it.sku = e.target.value.replace(/[\s-]+/g,""); it.manual = !!it.sku; if (!it.sku) { it.manual=false; matchItem(it); }
+  } else if (e.target.classList.contains("titlein")) {
+    it.title = e.target.value.trim(); if (!it.manual) matchItem(it);
+  }
+  render(); saveRunLocal();
+});
+$("tbody").addEventListener("click", async e => {
+  const i = e.target.dataset.save; if (i === undefined) return;
+  const it = run.items[+i]; e.target.disabled = true;
+  try {
+    const entry = {title:it.title, sku:it.sku, publisher:it.publisher||"", matched:it.matchTitle||"", source:it.manual?"manual":it.src};
+    await api("/api/data", {method:"POST", body: JSON.stringify({action:"remember", key:it.key, entry})});
+    known[it.key] = entry; it.manual = false; matchItem(it); render(); saveRunLocal();
+  } catch(err){ if (!(err instanceof AuthError)) flash("blMsg","Couldn't remember that SKU. "+err.message,true); e.target.disabled=false; }
+});
+
+function flash(id, text, err){ const m=$(id); m.hidden=!text; m.className = "msg"+(err?" err":""); m.textContent=text||""; }
+function busyMsg(id, text){ const m=$(id); m.hidden=false; m.className="msg"; m.innerHTML = '<span class="spin"></span>'+esc(text); }
+
+/* ---------- files ---------- */
+function wireDrop(dropId, inputId, handler){
+  const d=$(dropId), inp=$(inputId);
+  d.onclick = () => inp.click();
+  d.onkeydown = e => { if (e.key==="Enter"||e.key===" ") { e.preventDefault(); inp.click(); } };
+  d.ondragover = e => { e.preventDefault(); d.classList.add("over"); };
+  d.ondragleave = () => d.classList.remove("over");
+  d.ondrop = e => { e.preventDefault(); d.classList.remove("over"); if (e.dataTransfer.files[0]) handler(e.dataTransfer.files[0]); };
+  inp.onchange = () => { if (inp.files[0]) handler(inp.files[0]); inp.value=""; };
+}
+async function readSheet(file){
+  const wb = XLSX.read(await file.arrayBuffer(), {type:"array"});
+  return wb.SheetNames.map(n => ({name:n, rows: XLSX.utils.sheet_to_json(wb.Sheets[n], {header:1, raw:false, defval:""})}));
+}
+
+/* ---------- catalogue ---------- */
+function guessCol(header, words){ return header.findIndex(h => words.some(w => String(h).toLowerCase().includes(w))); }
+wireDrop("catDrop","catFile", async file => {
+  flash("catMsg","");
+  try {
+    const sheets = await readSheet(file);
+    const sh = sheets.find(s => s.rows.length > 1) || sheets[0];
+    const hi = sh.rows.findIndex(r => r.filter(c => String(c).trim()).length >= 2);
+    if (hi < 0) throw new Error("empty");
+    const header = sh.rows[hi].map((h,i) => String(h).trim() || "Column "+(i+1));
+    const rows = sh.rows.slice(hi+1).filter(r => r.some(c => String(c).trim()));
+    pendingCat = {header, rows, fileName:file.name};
+    const opts = (sel, guess, allowNone) => { sel.innerHTML = (allowNone?`<option value="-1">(none)</option>`:"") + header.map((h,i)=>`<option value="${i}">${esc(h)}</option>`).join(""); sel.value = String(guess); };
+    opts($("colSku"), Math.max(0, guessCol(header,["isbn","sku","barcode","ean","code"])));
+    opts($("colTitle"), Math.max(0, guessCol(header,["title","description","desc","name","item"])));
+    opts($("colPub"), guessCol(header,["publisher","pub","brand","vendor","supplier"]), true);
+    $("catPreview").textContent = `${rows.length.toLocaleString()} rows in ${file.name}`;
+    $("catMap").hidden = false;
+  } catch { flash("catMsg","That file couldn't be read as a spreadsheet. Save it as .xlsx or .csv and try again.",true); }
+});
+$("catSave").onclick = async () => {
+  if (!pendingCat) return;
+  const si=+$("colSku").value, ti=+$("colTitle").value, pi=+$("colPub").value;
+  const rows = pendingCat.rows.map(r => [String(r[si]??"").trim(), String(r[ti]??"").trim(), pi>=0 ? String(r[pi]??"").trim() : ""]).filter(r => r[0] && r[1]);
+  $("catSave").disabled = true; busyMsg("catMsg","Saving catalogue…");
+  try {
+    const res = await api("/api/data", {method:"POST", body: JSON.stringify({action:"saveCatalog", rows, fileName: pendingCat.fileName})});
+    setCatalog(rows, pendingCat.fileName, res.updatedAt); $("catMap").hidden = true;
+    flash("catMsg",`Saved ${rows.length.toLocaleString()} titles. Every device using this site now matches against it.`);
+  } catch(err){ if (!(err instanceof AuthError)) flash("catMsg","Couldn't save the catalogue. "+err.message,true); }
+  $("catSave").disabled = false;
+};
+function setCatalog(rows, fileName, when){
+  catalog = rows.map(([sku,title,pub]) => ({sku, title, pub, f:feats(title)}));
+  $("catStat").innerHTML = rows.length ? `<b>${rows.length.toLocaleString()}</b> title${rows.length===1?"":"s"} · ${esc(fileName||"")}${when?` · updated ${esc(new Date(when).toLocaleDateString())}`:""}` : "No catalogue yet. Matching uses saved SKUs only.";
+  rematchAll();
+}
+
+/* ---------- booklist: turning lines into candidate rows ---------- */
+const PUBS = ["Marshall Cavendish","Marshall C\\.?","Marshall","MCE","Star Publishing","Star Pub\\.?","Starpub","Teach(?:er'?s'?)?\\.? ?P(?:rod(?:uction|n)?)?\\.?","Child Ed(?:ucation)?","SAP","EPH","Hodder(?: Education| Ed)?","Pearson","Oxford","OUP","Shing ?Lee","Casco","Pan Pac","Edify(?: Educationals)?","Educational Publishing House","School Prdn","School Material"];
+const PUB_RE = new RegExp("(?:^|\\s)(" + PUBS.join("|") + ")(?=\\s|$)", "i");
+const TICK_RE = /[✓✔√☑✅]/;
+function parseLine(raw){
+  let t = String(raw).replace(/[|\[\]{}_]+/g," ").replace(/\s+/g," ").trim();
+  if (!t) return null;
+  const ticked = TICK_RE.test(t);
+  t = t.replace(/[✓✔√☑✅]/g," ");
+  const prices = t.match(/\$\s?\d{1,3}\.\d{2}|\b\d{1,3}\.\d{2}\b/g) || [];
+  t = t.replace(/\$\s?\d{1,3}\.\d{2}|\b\d{1,3}\.\d{2}\b/g," ").replace(/\b(?:NFY|TBC|NEW!?)\b/g," ");
+  let publisher = ""; const pm = t.match(PUB_RE); if (pm) { publisher = pm[1]; t = t.replace(pm[0]," "); }
+  t = t.replace(/\b97[89][\d-]{10,14}\b/g," ").replace(/\s+/g," ").trim();
+  const tok = t.split(" "); let no = "", start = 0;
+  for (let i=0; i<Math.min(tok.length, 7); i++) {
+    if (/^#?\d{1,3}\.?$/.test(tok[i]) && tok.slice(0,i).every(w => !/[a-z]/.test(w))) { no = tok[i].replace(/\D/g,""); start = i+1; break; }
+  }
+  let title = tok.slice(start).join(" ").replace(/^[^\p{L}\p{N}(]+/u,"").trim();
+  const looksItem = !!title && title.length >= 4 && /\p{L}{2}/u.test(title) && (prices.length || no || publisher);
+  return {no, title, publisher, price: prices[0] || "", ticked, looksItem, raw: String(raw).trim()};
+}
+function fromSheets(sheets){
+  const out = [];
+  for (const sh of sheets) {
+    const rows = sh.rows;
+    const hi = rows.findIndex(r => r.some(c => /\btitles?\b|description|book/i.test(String(c))));
+    if (hi >= 0) {
+      const h = rows[hi].map(c => String(c).toLowerCase());
+      const col = re => h.findIndex(c => re.test(c));
+      const ti = col(/titles?|description|book/), pi = col(/publisher|pub\b/), pr = col(/price|amount|\$/), ki = col(/tick|✓|√|select|qty|buy/), ni = col(/^(no\.?|#|s\/n|sn|item)$/);
+      for (const r of rows.slice(hi+1)) {
+        const title = String(r[ti]||"").trim(); if (!title) continue;
+        const tickCell = ki >= 0 ? String(r[ki]||"").trim() : "";
+        out.push({no: ni>=0 ? String(r[ni]||"") : "", title, publisher: pi>=0 ? String(r[pi]||"") : "", price: pr>=0 ? String(r[pr]||"") : "",
+          ticked: ki >= 0 ? (!!tickCell && !/^(0|no|n|x)$/i.test(tickCell) || TICK_RE.test(tickCell)) : false, looksItem:true, raw: r.join(" | ")});
+      }
+      candMeta.tickColumn = candMeta.tickColumn || ki >= 0;
+    } else rows.forEach(r => { const p = parseLine(r.join(" ")); if (p) out.push(p); });
+  }
+  return out;
+}
+async function pdfLines(buf){
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";
+  const pdf = await pdfjsLib.getDocument({data: buf}).promise; const lines = []; let chars = 0;
+  for (let p=1; p<=pdf.numPages; p++) {
+    const tc = await (await pdf.getPage(p)).getTextContent();
+    const rows = [];
+    for (const it of tc.items) {
+      if (!it.str || !it.str.trim()) continue; chars += it.str.length;
+      const y = it.transform[5], x = it.transform[4];
+      let row = rows.find(r => Math.abs(r.y - y) < 3); if (!row) { row = {y, parts:[]}; rows.push(row); }
+      row.parts.push({x, s: it.str});
+    }
+    rows.sort((a,b) => b.y - a.y).forEach(r => lines.push(r.parts.sort((a,b)=>a.x-b.x).map(q=>q.s).join(" ")));
+  }
+  return {lines, chars, pdf};
+}
+async function ocrImages(images, onProgress){
+  const langs = $("optChi").checked ? "eng+chi_sim" : "eng";
+  const worker = await Tesseract.createWorker(langs, 1, { logger: m => { if (m.status === "recognizing text") onProgress(m.progress); } });
+  const lines = [];
+  for (let i=0;i<images.length;i++) { const { data } = await worker.recognize(images[i]); data.text.split("\n").forEach(l => lines.push(l)); }
+  await worker.terminate();
+  return lines;
+}
+async function prepImage(src){
+  const w = src.width, h = src.height, k = Math.max(1, Math.min(2.5, 2400 / Math.max(w, h)));
+  const cv = document.createElement("canvas"); cv.width = Math.round(w*k); cv.height = Math.round(h*k);
+  const g = cv.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,cv.width,cv.height); g.filter = "grayscale(1) contrast(1.3)"; g.drawImage(src, 0, 0, cv.width, cv.height);
+  return cv;
+}
+async function fileToImage(file){
+  const bmp = await createImageBitmap(file).catch(() => null);
+  if (bmp) return bmp;
+  return await new Promise((res, rej) => { const im = new Image(); im.onload = () => res(im); im.onerror = rej; im.src = URL.createObjectURL(file); });
+}
+async function pdfPagesToCanvases(pdf, max){
+  const out = [];
+  for (let p=1; p<=Math.min(pdf.numPages, max); p++) {
+    const page = await pdf.getPage(p), vp = page.getViewport({scale:2.2});
+    const cv = document.createElement("canvas"); cv.width = vp.width; cv.height = vp.height;
+    const g = cv.getContext("2d"); g.fillStyle="#fff"; g.fillRect(0,0,cv.width,cv.height);
+    await page.render({canvasContext:g, viewport:vp}).promise; out.push(cv);
+  }
+  return out;
+}
+
+wireDrop("blDrop","blFile", async file => {
+  candMeta = {fileName:file.name, tickColumn:false}; $("pick").hidden = true;
+  const name = file.name.toLowerCase();
+  const prog = p => busyMsg("blMsg", `Reading ${file.name} on this device… ${Math.round(p*100)}%`);
+  try {
+    if (/\.(xlsx|xls|csv)$/.test(name)) {
+      busyMsg("blMsg","Reading spreadsheet…");
+      cands = fromSheets(await readSheet(file));
+    } else if (name.endsWith(".pdf") || file.type === "application/pdf") {
+      busyMsg("blMsg","Reading PDF…");
+      const {lines, chars, pdf} = await pdfLines(await file.arrayBuffer());
+      if (chars > 80) cands = lines.map(parseLine).filter(Boolean);
+      else { const pages = await pdfPagesToCanvases(pdf, 6); cands = (await ocrImages(pages, prog)).map(parseLine).filter(Boolean); }
+    } else {
+      prog(0);
+      const img = await prepImage(await fileToImage(file));
+      cands = (await ocrImages([img], prog)).map(parseLine).filter(Boolean);
+    }
+    cands.forEach((c,i) => { c.id = i; c.sel = !!c.ticked; });
+    flash("blMsg", "");
+    showPick();
+  } catch (err) {
+    console.error(err);
+    flash("blMsg", "That file couldn't be read. For photos, try a clearer, straight-on shot; for Excel, save as .xlsx.", true);
+  }
+});
+
+/* ---------- step 2b: choose ticked rows ---------- */
+function showPick(){
+  const items = cands.filter(c => c.looksItem);
+  const preTicked = cands.filter(c => c.sel).length;
+  $("pick").hidden = false;
+  $("pickTitle").textContent = `${items.length} book row${items.length===1?"":"s"} found in ${candMeta.fileName}`;
+  $("pickNote").textContent = preTicked
+    ? `${preTicked} row${preTicked===1?" was":"s were"} already marked as ticked in the file. Check them against the list, add any missed, then press Match selected.`
+    : "Tap each row that is ticked on the booklist, then press Match selected. Fix any misread title by typing over it.";
+  drawPick();
+  $("pick").scrollIntoView({behavior: matchMedia("(prefers-reduced-motion: reduce)").matches ? "auto" : "smooth", block:"start"});
+}
+function drawPick(){
+  const all = $("showAll").checked;
+  const list = cands.filter(c => all || c.looksItem || c.sel);
+  $("pickList").innerHTML = list.length ? list.map(c => `
+    <div class="pickrow${c.sel?" on":""}${c.looksItem?"":" faint"}">
+      <input type="checkbox" id="c-${c.id}" data-id="${c.id}" ${c.sel?"checked":""} aria-label="Ticked">
+      <span class="pno">${esc(c.no)}</span>
+      <input type="text" class="ptitle" id="pt-${c.id}" data-id="${c.id}" value="${esc(c.title || c.raw)}" aria-label="Title">
+      <span class="pmeta">${esc([c.publisher, c.price].filter(Boolean).join(" · "))}</span>
+    </div>`).join("") : `<p class="note">No book rows were recognised. Tick "Show lines that don't look like books", or try a clearer photo.</p>`;
+  const n = cands.filter(c => c.sel).length;
+  $("pickGo").textContent = `Match ${n} selected`; $("pickGo").disabled = !n;
+}
+$("pickList").addEventListener("change", e => {
+  const c = cands[+e.target.dataset.id]; if (!c) return;
+  if (e.target.type === "checkbox") c.sel = e.target.checked; else c.title = e.target.value.trim();
+  drawPick();
+});
+$("pickList").addEventListener("click", e => {
+  const row = e.target.closest(".pickrow"); if (!row || e.target.matches("input")) return;
+  const cb = row.querySelector("input[type=checkbox]"); cb.checked = !cb.checked; cb.dispatchEvent(new Event("change", {bubbles:true}));
+});
+$("showAll").onchange = drawPick;
+$("pickAll").onclick = () => { cands.forEach(c => { if (c.looksItem) c.sel = true; }); drawPick(); };
+$("pickNone").onclick = () => { cands.forEach(c => c.sel = false); drawPick(); };
+$("pickGo").onclick = () => {
+  const items = cands.filter(c => c.sel && (c.title||c.raw)).map(c => ({no:c.no, title:c.title || c.raw, publisher:c.publisher, price:c.price}));
+  run = {fileName: candMeta.fileName, items}; run.items.forEach(matchItem);
+  $("pick").hidden = true; render(); saveRunLocal();
+  document.querySelector(".results").scrollIntoView({block:"start"});
+};
+
+/* ---------- export ---------- */
+function tableRows(){ return run.items.map(x => [x.no||"", x.title, x.publisher, x.price, x.sku, statusLabel(x), x.matchTitle||""]); }
+$("copyBtn").onclick = async () => {
+  const text = [["No","Title","Publisher","Price","SKU","Status"].join("\t"), ...tableRows().map(r => r.slice(0,6).join("\t"))].join("\n");
+  try { await navigator.clipboard.writeText(text); $("copyBtn").textContent="Copied"; setTimeout(()=>$("copyBtn").textContent="Copy table",1500); }
+  catch { flash("blMsg","Copying isn't allowed in this browser. Use Download Excel instead.",true); }
+};
+$("dlBtn").onclick = () => {
+  const ws = XLSX.utils.aoa_to_sheet([["No","Title","Publisher","Price","SKU / ISBN","Status","Matched title"], ...tableRows()]);
+  ws["!cols"] = [{wch:5},{wch:60},{wch:14},{wch:9},{wch:16},{wch:12},{wch:60}];
+  const wb = XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb, ws, "SKUs");
+  XLSX.writeFile(wb, (run.fileName || "booklist").replace(/\.[^.]+$/,"").replace(/[^\w\- ]+/g,"").trim().replace(/\s+/g,"_") + "_SKUs.xlsx");
+};
+
+/* ---------- boot ---------- */
+async function boot(){
+  const d = await api("/api/data");
+  known = d.known || {};
+  try { const saved = JSON.parse(ls.get("run") || "null"); if (saved && saved.items) run = saved; } catch {}
+  setCatalog(d.catalog?.rows || [], d.catalog?.fileName, d.catalog?.updatedAt);
+  render();
+}
+render();
+boot().catch(err => { if (!(err instanceof AuthError)) $("catStat").textContent = "Couldn't reach the server: " + err.message; });
+})();
+</script>
+</body>
+</html>

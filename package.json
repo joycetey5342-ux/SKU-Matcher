@@ -1,0 +1,10 @@
+{
+  "name": "booklist-sku-matcher",
+  "version": "1.0.0",
+  "private": true,
+  "type": "module",
+  "description": "Upload a school booklist and get SKUs for the ticked items.",
+  "dependencies": {
+    "@netlify/blobs": "11.1.4"
+  }
+}
